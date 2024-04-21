@@ -6,9 +6,6 @@
 #include <WebServer.h>
 #include "I2Cdev.h"
 #include "MPU6050_6Axis_MotionApps612.h"
-// #include <string>
-// #include <iostream>
-// using namespace std;
 
 #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
     #include "Wire.h"
@@ -78,6 +75,12 @@ const unsigned long interval = 10000;
 bool isBadPosture;
 String leanType;
 float deviation = 0.0;
+
+// Motion Detection
+String motionType;
+bool stepDetected;
+const float stepThreshold = 2.0;
+float prevAccelerationZ = 0.0;
 
 // Store the HTML page as a string
 const char* htmlPage = R"(
@@ -302,6 +305,10 @@ input:checked + .slider:before {
           <div class = "posture-info" id = "lean-type">Lean Type Loading...</div>
           <div class = "posture-info" id = "posture-deviation">Deviation: Loading...</div>
         </div>
+        <hr>
+        <div id = "posture-status">
+          <div class = "posture-info" id = "motion-type">Motion Type: Loading...</div>
+        </div>
       </div>
     </div>
     <div class="data-box" id = "sensor-data-box">
@@ -388,10 +395,12 @@ input:checked + .slider:before {
               const postureCondition = data.isBadPosture ? "Bad Posture Detected" : "Good Posture";
               const leanData = data.leanType;
               const postureDeviation = data.deviation;
+              const motionType = data.motionType;
 
               document.getElementById("posture-condition").textContent = `Posture: ${postureCondition}`;
               document.getElementById("lean-type").textContent = `Lean Type: ${leanData}`;
               document.getElementById("posture-deviation").textContent = `Deviation: ${postureDeviation} degrees`;
+              document.getElementById("motion-type").textContent = `Motion Type: ${motionType}`;
              }
 
             function updateMpuStatus(data) {
@@ -457,6 +466,7 @@ void handleSensorData() {
                 String(",\"isBadPosture\":") + String(isBadPosture) +
                 String(",\"leanType\":") + "\"" + leanType + "\"" +
                 String(",\"deviation\":") + String(deviation) +
+                String(",\"motionType\":") + "\"" + motionType + "\"" +
                 String("}");
 
   server.send(200, "application/json", data);
@@ -503,6 +513,82 @@ void motorVibrate(int count) {
     digitalWrite(motorBase,LOW);
   }
 }
+
+void checkButton() {
+  if (digitalRead(TRIGGER_PIN) == HIGH) {
+    delay(50);
+    if (digitalRead(TRIGGER_PIN) == HIGH) {
+      Serial.println("Trigger Button Pressed");
+      digitalWrite(Red,LOW);
+      delay(3000);
+      if (digitalRead(TRIGGER_PIN) == HIGH) {
+        digitalWrite(Blue,LOW);
+        Serial.println("Trigger Button Held");
+        Serial.println("Erasing Config, restarting");
+        wm.resetSettings();
+        ESP.restart();
+      }
+
+      Serial.println("Starting Config Portal");
+      digitalWrite(Green,LOW);
+      digitalWrite(Red,HIGH);
+      digitalWrite(Blue,HIGH);
+
+      wm.setConfigPortalTimeout(600);
+
+      if (!wm.startConfigPortal("PosturePro ESP32 OnDemandAP")) {
+        Serial.println("Failed to connect or hit timeout");
+        delay(3000);
+      } else {
+        Serial.println("Connected Successfully...");
+        digitalWrite(LED_BUILTIN,HIGH);
+        digitalWrite(Green,HIGH);
+      }
+    }
+  }
+}
+
+String getParan(String name) {
+  String value;
+  if(wm.server->hasArg(name)) {
+    value = wm.server->arg(name);
+  }
+  return value;
+}
+
+void saveParamCallback() {
+  Serial.println("[CALLBACK] saveParamCallback fired");
+  Serial.println("PARAM customfieldid = " + getParan("customfieldid"));
+}
+
+float integrateAcceleration(float initialAcceleration, float finalAcceleration, unsigned long dt) {
+  // v = u + at
+    float initialVelocity = initialAcceleration * 0;
+    float finalVelocity = finalAcceleration * (dt/1000);
+    float averageVelocity = (finalVelocity - initialVelocity); // / 2; // avg v = (vf+vi)/2
+    //avg a = (iac + fa)/2 , displacement = a * t;
+    // float averageAcceleration = (initialAcceleration + finalAcceleration) / 2;
+    float displacement = averageVelocity / (dt/1000);
+    return displacement;
+}
+
+void detectStep() {
+  // float accel = sqrt(accelerationX^2 + accelerationY^2 + accelerationZ^2);
+  float deltaAcceleration = abs(accelerationZ - prevAccelerationZ);
+  if (deltaAcceleration > stepThreshold) {
+    stepDetected = true;
+    Serial.println("Step Detected");
+  } else {
+    stepDetected = false;
+  }
+  prevAccelerationZ = accelerationZ;
+
+  // if (prevAccelerationZ > accelerationZ + 0.1 && prevAccelerationZ > 8) {
+  //   stepDetected = true;
+  //   Serial.println("Step Detected");
+  // }
+  // prevAccelerationZ = accelerationZ;
+} 
 
 void setup() {
   #if I2CDEV_IMPLEMENTATION == I2CDEV_ARDUINO_WIRE
@@ -644,64 +730,6 @@ void setup() {
     // motorVibrate(2);
 }
 
-float integrateAcceleration(float initialAcceleration, float finalAcceleration, unsigned long dt) {
-  // v = u + at
-    float initialVelocity = initialAcceleration * 0;
-    float finalVelocity = finalAcceleration * (dt/1000);
-    float averageVelocity = (finalVelocity - initialVelocity); // / 2; // avg v = (vf+vi)/2
-    //avg a = (iac + fa)/2 , displacement = a * t;
-    // float averageAcceleration = (initialAcceleration + finalAcceleration) / 2;
-    float displacement = averageVelocity / (dt/1000);
-    return displacement;
-}
-
-void checkButton() {
-  if (digitalRead(TRIGGER_PIN) == HIGH) {
-    delay(50);
-    if (digitalRead(TRIGGER_PIN) == HIGH) {
-      Serial.println("Trigger Button Pressed");
-      digitalWrite(Red,LOW);
-      delay(3000);
-      if (digitalRead(TRIGGER_PIN) == HIGH) {
-        digitalWrite(Blue,LOW);
-        Serial.println("Trigger Button Held");
-        Serial.println("Erasing Config, restarting");
-        wm.resetSettings();
-        ESP.restart();
-      }
-
-      Serial.println("Starting Config Portal");
-      digitalWrite(Green,LOW);
-      digitalWrite(Red,HIGH);
-      digitalWrite(Blue,HIGH);
-
-      wm.setConfigPortalTimeout(600);
-
-      if (!wm.startConfigPortal("PosturePro ESP32 OnDemandAP")) {
-        Serial.println("Failed to connect or hit timeout");
-        delay(3000);
-      } else {
-        Serial.println("Connected Successfully...");
-        digitalWrite(LED_BUILTIN,HIGH);
-        digitalWrite(Green,HIGH);
-      }
-    }
-  }
-}
-
-String getParan(String name) {
-  String value;
-  if(wm.server->hasArg(name)) {
-    value = wm.server->arg(name);
-  }
-  return value;
-}
-
-void saveParamCallback() {
-  Serial.println("[CALLBACK] saveParamCallback fired");
-  Serial.println("PARAM customfieldid = " + getParan("customfieldid"));
-}
-
 void loop() {
   if(wm_nonblocking) wm.process();
   checkButton();
@@ -741,6 +769,13 @@ void loop() {
   Serial.println(accelerationZ);
   Serial.println(startTime);
 
+  detectStep();
+  if (stepDetected == true) {
+    motionType = "Walking/Running";
+  } else {
+    motionType = "Staionary/Sitting";
+  }
+
   // Check if 10sec have elapsed
   // if (mpuDetected == true) {
   //   if (millis() - startTime > 5000){
@@ -758,36 +793,35 @@ void loop() {
   //     } 
   //   }
   // }
-
-  if ((ypr[2] * 180 > 45 || ypr[2] * 180 < -45) && mpuDetected) {
-    Serial.println("Forward Lean Detected");
-    isBadPosture = true;
-    if (ypr[2] * 180 > 45) {
-      deviation = (ypr[2] * 180) - 45;
-      leanType = "Forward Lean";
-    } else if (ypr[2] * 180 < -45) {
-      deviation = (ypr[2] * 180) + 45;
-      leanType = "Backward Lean";
+  if (mpuDetected) {
+    if ((ypr[2] * 180 > 45 || ypr[2] * 180 < -45)) {
+      Serial.println("Forward Lean Detected");
+      isBadPosture = true;
+      if (ypr[2] * 180 > 45) {
+        deviation = (ypr[2] * 180) - 45;
+        leanType = "Forward Lean";
+      } else if (ypr[2] * 180 < -45) {
+        deviation = (ypr[2] * 180) + 45;
+        leanType = "Backward Lean";
+      }
+      digitalWrite(motorBase, HIGH);
+    } 
+    else if ((ypr[0] * 180 > 35 || ypr[0] * 180 < -35)) {
+      Serial.println("Side Lean Detected");
+      isBadPosture = true;
+      if (ypr[0] * 180 > 35) {
+        deviation = (ypr[2] * 180) - 35;
+        leanType = "Side Lean - Right";
+      } else if(ypr[0] * 180 < -35) {
+        deviation = (ypr[0] * 180) + 35;
+        leanType = "Side Lean - Left";
+      }
+      digitalWrite(motorBase, HIGH);
+    } else {
+      digitalWrite(motorBase, LOW);
+      isBadPosture = false;
+      leanType = "No lean detected";
+      deviation = 0.0;
     }
-    digitalWrite(motorBase, HIGH);
-  } 
-  else if ((ypr[0] * 180 > 35 || ypr[0] * 180 < -35) && mpuDetected) {
-    Serial.println("Side Lean Detected");
-    isBadPosture = true;
-    if (ypr[0] * 180 > 35) {
-      deviation = (ypr[2] * 180) - 35;
-      leanType = "Side Lean - Right";
-    } else if(ypr[0] * 180 < -35) {
-      deviation = (ypr[0] * 180) + 35;
-      leanType = "Side Lean - Left";
-    }
-    digitalWrite(motorBase, HIGH);
-  } else {
-    digitalWrite(motorBase, LOW);
-    isBadPosture = false;
-    leanType = "No lean detected";
-    deviation = 0.0;
-  }
-   
-  delay(500);
+  }  
 }

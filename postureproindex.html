@@ -219,6 +219,10 @@ input:checked + .slider:before {
           <div class = "posture-info" id = "lean-type">Lean Type Loading...</div>
           <div class = "posture-info" id = "posture-deviation">Deviation: Loading...</div>
         </div>
+        <hr>
+        <div id = "posture-status">
+          <div class = "posture-info" id = "motion-type">Motion Type: Loading...</div>
+        </div>
       </div>
     </div>
     <div class="data-box" id = "sensor-data-box">
@@ -304,11 +308,13 @@ input:checked + .slider:before {
             function updatePostureStatus(data) {
               const postureCondition = data.isBadPosture ? "Bad Posture Detected" : "Good Posture";
               const leanType = data.leanType;
-              const posturDeviation = '${data.postureDeviation} degrees';
+              const posturDeviation = `${data.postureDeviation} degrees`;
+              const motionType = data.motionType;
 
-              document.getElementById("posture-condition").textContent = 'Posture: ${postureCondition}';
-              document.getElementById("lean-type").textContent = 'Lean Type: ${leanType}';
-              document.getElementById("posture-deviation").textContent = 'Deviation: ${postureDeviation}';
+              document.getElementById("posture-condition").textContent = `Posture: ${postureCondition}`;
+              document.getElementById("lean-type").textContent = `Lean Type: ${leanType}`;
+              document.getElementById("posture-deviation").textContent = `Deviation: ${postureDeviation}`;
+              document.getElementById("motion-type").textContent = `Motion Type: ${motionType}`;
              }
 
             function updateMpuStatus(data) {
