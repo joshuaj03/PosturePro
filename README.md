@@ -12,14 +12,14 @@
 
 ## Version Updates
 
-### Version 2.0
+### Version 2.1
 
 - **Step Detection**: Added functionality to detect whether the user is walking, sitting, or idle.
 - **Adjustable Haptic Feedback**: Introduced a section for adjusting haptic feedback intensity with a slider (currently a work in progress).
 - **Recalibration Button**: Added a button to reset the base value for posture detection.
 - **Posture Correction Exercises**: Included a section recommending common posture-correcting exercises.
 
-### Version 1.0
+### Version 1.4
 
 - **Lean Detection/Posture Detection**: Measures lean and posture, displaying IMU sensor data.
 - **Wi-Fi Network Status**: Displays the connected Wi-Fi network and its signal strength.
